@@ -565,6 +565,7 @@ async function attemptTurnstileCdp(page) {
                         await page.waitForTimeout(2000);
                         if (!await modal.isVisible()) {
                             console.log('   >> ✅ Modal closed. Renew successful!');
+                            console.log(JSON.stringify({ success: true }));
 
                             // 截图成功状态
                             const fs = require('fs');

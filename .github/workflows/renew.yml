@@ -6,7 +6,8 @@ on:
     - cron: '0 */4 * * *'
   workflow_dispatch:
   repository_dispatch:
-
+    types: [external_trigger]
+    
 concurrency:
   group: renew-lock
   cancel-in-progress: false

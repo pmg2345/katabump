@@ -35,14 +35,15 @@ echo "$RESULT"
 if echo "$RESULT" | grep -q '"success":true'; then
     echo "真正续期成功！"
 
-    # 归一化到当天 0 点
     TODAY_ZERO=$(( NOW / 86400 * 86400 ))
+    echo "DEBUG: TODAY_ZERO=$TODAY_ZERO"
+    echo "DEBUG: STATE FILE PATH=$(realpath "$STATE")"
+
     echo $TODAY_ZERO > "$STATE"
+    echo "DEBUG: Written content:"
+    cat "$STATE"
 
     rm -f "$RETRY"
-else
-    echo "未续期成功（可能还没到时间）"
-    touch "$RETRY"
 fi
 
 echo "=== 主任务结束 ==="

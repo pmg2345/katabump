@@ -1,7 +1,8 @@
 #!/bin/bash
 
-STATE=".last_success"
-RETRY=".need_retry"
+# === 固定状态文件路径（与主脚本一致） ===
+STATE="$HOME/.katabump_last_success"
+RETRY="$HOME/.katabump_need_retry"
 
 echo "=== Katabump Retry Check ==="
 
@@ -17,12 +18,20 @@ RESULT=$(xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node ac
 
 echo "$RESULT"
 
-if echo "$RESULT" | grep -q '"success":true'; then
+# 更稳健的 success 检测（允许空格、大小写）
+if echo "$RESULT" | grep -qi '"success"[[:space:]]*:[[:space:]]*true'; then
     echo "补救续期成功！"
 
     NOW=$(date +%s)
     TODAY_ZERO=$(( NOW / 86400 * 86400 ))
+
+    echo "DEBUG: TODAY_ZERO=$TODAY_ZERO"
+    echo "DEBUG: STATE FILE PATH=$STATE"
+
     echo $TODAY_ZERO > "$STATE"
+
+    echo "DEBUG: Written content:"
+    cat "$STATE"
 
     rm -f "$RETRY"
 else

@@ -1,5 +1,5 @@
 #!/bin/bash
-
+echo "DEBUG: USING STATE=$STATE"
 # === 固定状态文件路径（推荐） ===
 STATE="$HOME/.katabump_last_success"
 RETRY="$HOME/.katabump_need_retry"

@@ -1,11 +1,12 @@
 #!/bin/bash
 
-STATE=".last_success"
-RETRY=".need_retry"
+# === 固定状态文件路径（推荐） ===
+STATE="$HOME/.katabump_last_success"
+RETRY="$HOME/.katabump_need_retry"
 
 echo "=== Katabump Daily Check ==="
 
-# 读取上次成功时间（归一化后的 0 点时间戳）
+# 读取上次成功时间
 if [ -f "$STATE" ]; then
     LAST=$(cat "$STATE")
 else
@@ -27,23 +28,30 @@ fi
 
 echo "开始执行续期任务..."
 
+# 执行 Node 脚本
 RESULT=$(xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node action_renew.js)
 
 echo "$RESULT"
 
 # 判断是否真正续期成功
-if echo "$RESULT" | grep -q '"success":true'; then
+if echo "$RESULT" | grep -qi '"success"[[:space:]]*:[[:space:]]*true'; then
     echo "真正续期成功！"
 
+    # 归一化到当天 0 点
     TODAY_ZERO=$(( NOW / 86400 * 86400 ))
+
     echo "DEBUG: TODAY_ZERO=$TODAY_ZERO"
-    echo "DEBUG: STATE FILE PATH=$(realpath "$STATE")"
+    echo "DEBUG: STATE FILE PATH=$STATE"
 
     echo $TODAY_ZERO > "$STATE"
+
     echo "DEBUG: Written content:"
     cat "$STATE"
 
     rm -f "$RETRY"
+else
+    echo "未续期成功（可能还没到时间）"
+    touch "$RETRY"
 fi
 
 echo "=== 主任务结束 ==="

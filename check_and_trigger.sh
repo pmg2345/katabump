@@ -1,17 +1,13 @@
 #!/bin/bash
 
-
 echo "DEBUG: SCRIPT PATH=$(realpath "$0")"
 
-STATE="$HOME/.katabump_last_success"
-RETRY="$HOME/.katabump_need_retry"
+# === 状态文件放在仓库目录（可被 GitHub Actions cache 持久化） ===
+STATE="./.katabump_last_success"
+RETRY="./.katabump_need_retry"
 
 echo "DEBUG: USING STATE=$STATE"
 echo "DEBUG: USING RETRY=$RETRY"
-
-# === 固定状态文件路径（推荐） ===
-STATE="$HOME/.katabump_last_success"
-RETRY="$HOME/.katabump_need_retry"
 
 echo "=== Katabump Daily Check ==="
 
@@ -37,20 +33,18 @@ fi
 
 echo "开始执行续期任务..."
 
-# 执行 Node 脚本
 RESULT=$(xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node action_renew.js)
 
 echo "$RESULT"
 
-# 判断是否真正续期成功
+# 更稳健的 success 判断
 if echo "$RESULT" | grep -qi '"success"[[:space:]]*:[[:space:]]*true'; then
     echo "真正续期成功！"
 
-    # 归一化到当天 0 点
     TODAY_ZERO=$(( NOW / 86400 * 86400 ))
 
     echo "DEBUG: TODAY_ZERO=$TODAY_ZERO"
-    echo "DEBUG: STATE FILE PATH=$STATE"
+    echo "DEBUG: STATE FILE PATH=$(realpath "$STATE")"
 
     echo $TODAY_ZERO > "$STATE"
 

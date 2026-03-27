@@ -1,8 +1,13 @@
 #!/bin/bash
 
-# === 固定状态文件路径（与主脚本一致） ===
-STATE="$HOME/.katabump_last_success"
-RETRY="$HOME/.katabump_need_retry"
+echo "DEBUG: SCRIPT PATH=$(realpath "$0")"
+
+# === 状态文件放在仓库目录（可被 GitHub Actions cache 持久化） ===
+STATE="./.katabump_last_success"
+RETRY="./.katabump_need_retry"
+
+echo "DEBUG: USING STATE=$STATE"
+echo "DEBUG: USING RETRY=$RETRY"
 
 echo "=== Katabump Retry Check ==="
 
@@ -18,7 +23,7 @@ RESULT=$(xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node ac
 
 echo "$RESULT"
 
-# 更稳健的 success 检测（允许空格、大小写）
+# 更稳健的 success 判断
 if echo "$RESULT" | grep -qi '"success"[[:space:]]*:[[:space:]]*true'; then
     echo "补救续期成功！"
 
@@ -26,7 +31,7 @@ if echo "$RESULT" | grep -qi '"success"[[:space:]]*:[[:space:]]*true'; then
     TODAY_ZERO=$(( NOW / 86400 * 86400 ))
 
     echo "DEBUG: TODAY_ZERO=$TODAY_ZERO"
-    echo "DEBUG: STATE FILE PATH=$STATE"
+    echo "DEBUG: STATE FILE PATH=$(realpath "$STATE")"
 
     echo $TODAY_ZERO > "$STATE"
 

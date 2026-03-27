@@ -1,5 +1,14 @@
 #!/bin/bash
+
+
+echo "DEBUG: SCRIPT PATH=$(realpath "$0")"
+
+STATE="$HOME/.katabump_last_success"
+RETRY="$HOME/.katabump_need_retry"
+
 echo "DEBUG: USING STATE=$STATE"
+echo "DEBUG: USING RETRY=$RETRY"
+
 # === 固定状态文件路径（推荐） ===
 STATE="$HOME/.katabump_last_success"
 RETRY="$HOME/.katabump_need_retry"

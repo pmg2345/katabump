@@ -57,7 +57,7 @@ jobs:
 
     # === 补救执行 ===
     - name: Run retry
-      if: github.event.schedule == '0 */4 * * *'
+      if: github.event.schedule == '0 2 * * *'
       env:
         USERS_JSON: ${{ secrets.USERS_JSON }}
         HTTP_PROXY: ${{ secrets.HTTP_PROXY }}

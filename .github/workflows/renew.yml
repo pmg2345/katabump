@@ -9,7 +9,7 @@ on:
     types: [external_trigger]
 
 concurrency:
-  group: renew-${{ github.event.schedule }}
+  group: renew-${{ github.event.schedule || github.event_name }}
   cancel-in-progress: false
 
 jobs:
@@ -24,8 +24,8 @@ jobs:
       uses: actions/cache@v4
       with:
         path: |
-          ./.katabump_last_success
-          ./.katabump_need_retry
+          ${{ github.workspace }}/.katabump_last_success
+          ${{ github.workspace }}/.katabump_need_retry
         key: renew-state-restore
         restore-keys: |
           renew-state-
@@ -53,6 +53,8 @@ jobs:
         HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
         TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
         TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        STATE: ${{ github.workspace }}/.katabump_last_success
+        RETRY: ${{ github.workspace }}/.katabump_need_retry
       run: ./check_and_trigger.sh
 
     # === 补救执行 ===
@@ -63,6 +65,8 @@ jobs:
         HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
         TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
         TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        STATE: ${{ github.workspace }}/.katabump_last_success
+        RETRY: ${{ github.workspace }}/.katabump_need_retry
       run: ./retry_if_needed.sh
 
     # === 保存状态文件（仓库目录内，可持久化） ===
@@ -70,8 +74,8 @@ jobs:
       uses: actions/cache@v4
       with:
         path: |
-          ./.katabump_last_success
-          ./.katabump_need_retry
+          ${{ github.workspace }}/.katabump_last_success
+          ${{ github.workspace }}/.katabump_need_retry
         key: renew-state-${{ github.run_id }}
 
     - name: Upload Screenshots

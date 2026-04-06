@@ -21,14 +21,18 @@ jobs:
 
     # === 恢复状态文件（仓库目录内，可持久化） ===
     - name: Restore state cache
+      id: cache
       uses: actions/cache@v4
       with:
         path: |
           ${{ github.workspace }}/.katabump_last_success
           ${{ github.workspace }}/.katabump_need_retry
-        key: renew-state-restore
+        key: renew-state
         restore-keys: |
           renew-state-
+          
+    - name: Check cache hit
+      run: echo "cache-hit=${{ steps.cache.outputs.cache-hit }}"    
 
     - name: Make scripts executable
       run: chmod +x *.sh

@@ -81,6 +81,7 @@ jobs:
         name: state-${{ github.run_number }}
         path: .katabump_*
         retention-days: 3
+        include-hidden-files: true
 
     # === 上传截图（调试用）===
     - name: Upload Screenshots

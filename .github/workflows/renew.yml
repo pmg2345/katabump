@@ -1,17 +1,3 @@
-name: Katabump Auto Renew
-
-on:
-  schedule:
-    - cron: '0 0 * * *'
-    - cron: '0 2 * * *'
-  workflow_dispatch:
-  repository_dispatch:
-    types: [external_trigger]
-
-concurrency:
-  group: renew-${{ github.event.schedule || github.event_name }}
-  cancel-in-progress: false
-
 jobs:
   renew:
     runs-on: ubuntu-latest
@@ -20,20 +6,52 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    # === 恢复状态（artifact） ===
+    # ✅ Step 1: 找上一次 run
+    - name: Get previous run id
+      id: get_run
+      run: |
+        echo "Searching for latest valid state artifact..."
+
+        RUN_ID=$(curl -s \
+          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/actions/artifacts?per_page=50" \
+          | jq -r '
+            .artifacts[]
+            | select(.expired == false)
+            | select(.size_in_bytes > 0)
+            | select(.name | startswith("state-"))
+            | select(.workflow_run.id != '${{ github.run_id }}')
+            | .workflow_run.id
+          ' \
+          | head -n 1)
+
+        echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+
+    # ✅ Step 2: 有 run-id 才恢复
     - name: Restore state
+      if: steps.get_run.outputs.run_id != ''
       uses: actions/download-artifact@v4
       with:
+        run-id: ${{ steps.get_run.outputs.run_id }}
         pattern: state-*
         path: .
         merge-multiple: true
-      continue-on-error: true   # 第一次运行没有 artifact 不报错
 
-    - name: Debug state files
+    # ✅ Step 3: fallback（关键）
+    - name: Fallback init state
+      if: steps.get_run.outputs.run_id == ''
+      run: |
+        echo "⚠️ No previous state found, initializing..."
+        touch .katabump_last_success
+        touch .katabump_need_retry
+
+    # ✅ Debug（建议保留）
+    - name: Debug state
       run: |
         echo "=== STATE FILES ==="
-        ls -la .katabump_* || echo "No state files found"
+        ls -la .katabump_* || echo "No state files"
 
+    # === 你的原逻辑 ===
     - name: Make scripts executable
       run: chmod +x *.sh
 
@@ -42,38 +60,30 @@ jobs:
       with:
         node-version: '20'
 
-    - name: Install Dependencies
+    - name: Install deps
       run: |
         sudo apt-get update
         sudo apt-get install -y xvfb
         npm install
         npx playwright install-deps chrome
 
-    # === 每日执行 ===
+    # ✅ 每日执行
     - name: Run daily check
       if: github.event.schedule == '0 0 * * *' || github.event_name == 'workflow_dispatch'
       env:
-        USERS_JSON: ${{ secrets.USERS_JSON }}
-        HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
-        TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         STATE: ${{ github.workspace }}/.katabump_last_success
         RETRY: ${{ github.workspace }}/.katabump_need_retry
       run: ./check_and_trigger.sh
 
-    # === 补救执行 ===
+    # ✅ 补救执行
     - name: Run retry
       if: github.event.schedule == '0 2 * * *'
       env:
-        USERS_JSON: ${{ secrets.USERS_JSON }}
-        HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
-        TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         STATE: ${{ github.workspace }}/.katabump_last_success
         RETRY: ${{ github.workspace }}/.katabump_need_retry
       run: ./retry_if_needed.sh
 
-    # === 保存状态（artifact）===
+    # ✅ 保存 state
     - name: Upload state
       if: always()
       uses: actions/upload-artifact@v4
@@ -82,13 +92,3 @@ jobs:
         path: .katabump_*
         retention-days: 3
         include-hidden-files: true
-
-    # === 上传截图（调试用）===
-    - name: Upload Screenshots
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: screenshots-${{ github.run_number }}
-        path: screenshots/
-        if-no-files-found: warn
-        retention-days: 3

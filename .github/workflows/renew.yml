@@ -56,20 +56,6 @@ jobs:
         path: .                    # 解压到当前目录
         merge_multiple: true       # 如果有多个 artifact，合并到同一目录
         skip_unpack: false       # 默认就是 false（会解压）
-        
-    - name: Move state files to root
-      if: steps.get_run.outputs.run_id != ''
-      run: |
-        echo "=== Moving state files from possible subdirectories ==="
-        shopt -s nullglob
-        # 尝试从 state-*/ 目录移动
-        mv state-*/.katabump_* . 2>/dev/null || true
-        # 如果还有其他可能的目录
-        find . -maxdepth 2 -name ".katabump_*" -type f ! -path "./.git/*" -exec mv {} . \; 2>/dev/null || true
-        # 清理可能产生的空目录
-        rm -rf state-*/ 2>/dev/null || true
-        echo "=== After moving ==="
-        ls -la .katabump_* || echo "Still no state files"
             
     # ✅ Step 3: fallback（关键）
     - name: Fallback init state

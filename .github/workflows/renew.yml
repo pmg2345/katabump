@@ -11,6 +11,9 @@ on:
 concurrency:
   group: renew-${{ github.event.schedule || github.event_name }}
   cancel-in-progress: false
+  
+permissions:
+  actions: read
 
 jobs:
   renew:

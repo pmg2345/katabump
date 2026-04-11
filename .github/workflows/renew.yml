@@ -123,7 +123,7 @@ jobs:
       with:
         name: state-${{ github.run_number }}
         path: .katabump_*
-        retention-days: 3
+        retention-days: 5
         include-hidden-files: true
 
     # === 上传截图（调试用）===

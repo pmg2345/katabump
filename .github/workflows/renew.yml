@@ -11,7 +11,7 @@ on:
 concurrency:
   group: renew-${{ github.event.schedule || github.event_name }}
   cancel-in-progress: false
-  
+
 jobs:
   renew:
     runs-on: ubuntu-latest
@@ -65,7 +65,6 @@ jobs:
         echo "=== STATE FILES ==="
         ls -la .katabump_* || echo "No state files"
 
-    # === 你的原逻辑 ===
     - name: Make scripts executable
       run: chmod +x *.sh
 
@@ -74,30 +73,38 @@ jobs:
       with:
         node-version: '20'
 
-    - name: Install deps
+    - name: Install Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y xvfb
         npm install
         npx playwright install-deps chrome
 
-    # ✅ 每日执行
+    # === 每日执行 ===
     - name: Run daily check
       if: github.event.schedule == '0 0 * * *' || github.event_name == 'workflow_dispatch'
       env:
+        USERS_JSON: ${{ secrets.USERS_JSON }}
+        HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
+        TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         STATE: ${{ github.workspace }}/.katabump_last_success
         RETRY: ${{ github.workspace }}/.katabump_need_retry
       run: ./check_and_trigger.sh
 
-    # ✅ 补救执行
+    # === 补救执行 ===
     - name: Run retry
       if: github.event.schedule == '0 2 * * *'
       env:
+        USERS_JSON: ${{ secrets.USERS_JSON }}
+        HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
+        TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         STATE: ${{ github.workspace }}/.katabump_last_success
         RETRY: ${{ github.workspace }}/.katabump_need_retry
       run: ./retry_if_needed.sh
 
-    # ✅ 保存 state
+    # === 保存状态（artifact）===
     - name: Upload state
       if: always()
       uses: actions/upload-artifact@v4
@@ -106,3 +113,13 @@ jobs:
         path: .katabump_*
         retention-days: 3
         include-hidden-files: true
+
+    # === 上传截图（调试用）===
+    - name: Upload Screenshots
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: screenshots-${{ github.run_number }}
+        path: screenshots/
+        if-no-files-found: warn
+        retention-days: 3

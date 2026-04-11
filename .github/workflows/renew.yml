@@ -44,15 +44,16 @@ jobs:
 
         echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
 
-    # ✅ Step 2: 有 run-id 才恢复
+# ✅ Step 2: Restore state （推荐替换为这个）
     - name: Restore state
       if: steps.get_run.outputs.run_id != ''
-      uses: actions/download-artifact@v4
+      uses: dawidd6/action-download-artifact@v9   # 或 v6/v7/v8 都可以，v9 是较新版本
       with:
-        run-id: ${{ steps.get_run.outputs.run_id }}
-        pattern: state-*
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        run_id: ${{ steps.get_run.outputs.run_id }}
+        name: state-*          # 支持 pattern
         path: .
-        merge-multiple: true
+        merge-multiple: true   # 如果需要合并多个 artifact，可以加这个
 
     # ✅ Step 3: fallback（关键）
     - name: Fallback init state

@@ -1,3 +1,17 @@
+name: Katabump Auto Renew
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [external_trigger]
+
+concurrency:
+  group: renew-${{ github.event.schedule || github.event_name }}
+  cancel-in-progress: false
+  
 jobs:
   renew:
     runs-on: ubuntu-latest

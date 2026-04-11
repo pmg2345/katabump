@@ -134,4 +134,4 @@ jobs:
         name: screenshots-${{ github.run_number }}
         path: screenshots/
         if-no-files-found: warn
-        retention-days: 3
+        retention-days: 5

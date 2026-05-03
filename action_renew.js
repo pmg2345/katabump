@@ -309,7 +309,8 @@ async function attemptTurnstileCdp(page) {
         console.error('连接失败。退出。');
         process.exit(1);
     }
-
+	const contexts = browser.contexts();
+	const context = contexts.length > 0 ? contexts[0] : await browser.newContext();
     let page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
     page.setDefaultTimeout(60000);
 

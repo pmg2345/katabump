@@ -310,7 +310,6 @@ async function attemptTurnstileCdp(page) {
         process.exit(1);
     }
 
-    const context = browser.contexts()[0];
     let page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
     page.setDefaultTimeout(60000);
 
@@ -326,18 +325,19 @@ async function attemptTurnstileCdp(page) {
 
     await page.addInitScript(INJECTED_SCRIPT);
     console.log('注入脚本已添加。');
+	const photoDir = path.join(process.cwd(), 'screenshots');
+	if (!fs.existsSync(photoDir)) fs.mkdirSync(photoDir, { recursive: true });
+
 
     for (let i = 0; i < users.length; i++) {
         const user = users[i];
+		const safeUsername = user.username.replace(/[^a-z0-9]/gi, '_');
         console.log(`\n=== 正在处理用户 ${i + 1}/${users.length} ===`); // 隐去具体邮箱 logging
-
-        try {
-            if (page.isClosed()) {
-                page = await context.newPage();
-                // Context credentials apply
-                await page.addInitScript(INJECTED_SCRIPT);
-            }
-
+		// ✅ 每个用户独立 context
+        const context = await browser.newContext();		
+		const page = await context.newPage();
+		await page.addInitScript(INJECTED_SCRIPT);
+        try {                        
             // --- 登录逻辑 (简略版，逻辑一致) ---
             if (page.url().includes('dashboard')) {
                 await page.goto('https://dashboard.katabump.com/auth/logout');
@@ -453,145 +453,75 @@ async function attemptTurnstileCdp(page) {
                         continue;
                     }
 
-                    // A. 在模态框里晃晃鼠标
-                    try {
-                        const box = await modal.boundingBox();
-                        if (box) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 5 });
-                    } catch (e) { }
+					// A. 在模态框里晃晃鼠标
+					try {
+						const box = await modal.boundingBox();
+						if (box) {
+							await page.mouse.move(
+								box.x + box.width / 2,
+								box.y + box.height / 2,
+								{ steps: 5 }
+							);
+						}
+					} catch (e) { }
 
-                    // B. 找 Turnstile (小重试)
-                    console.log('正在检查 Turnstile (使用 CDP 绕过)...');
-                    let cdpClickResult = false;
-                    for (let findAttempt = 0; findAttempt < 30; findAttempt++) {
-                        cdpClickResult = await attemptTurnstileCdp(page);
-                        if (cdpClickResult) break;
-                        console.log(`   >> [寻找尝试 ${findAttempt + 1}/30] 尚未找到 Turnstile 复选框...`);
-                        await page.waitForTimeout(1000);
-                    }
+					// B. ALTCHA 处理（替代 Turnstile）
+					console.log('   >> 检测 ALTCHA 验证状态...');
 
-                    let isTurnstileSuccess = false;
-                    if (cdpClickResult) {
-                        console.log('   >> CDP 点击生效。等待 8秒 Cloudflare 检查...');
-                        await page.waitForTimeout(8000);
-                    } else {
-                        console.log('   >> 重试后仍未确认 Turnstile 复选框。');
-                    }
+					// 给前端时间算 PoW
+					await Promise.race([
+						page.waitForFunction(() => {
+							const btn = document.querySelector('#renew-modal button');
+							return btn && !btn.disabled;
+						}),
+						page.waitForTimeout(5000)
+					]);
 
-                    // C. 检查 Success 标志
-                    const frames = page.frames();
-                    for (const f of frames) {
-                        if (f.url().includes('cloudflare')) {
-                            try {
-                                if (await f.getByText('Success!', { exact: false }).isVisible({ timeout: 500 })) {
-                                    console.log('   >> 在 Turnstile iframe 中检测到 "Success!"。');
-                                    isTurnstileSuccess = true;
-                                    break;
-                                }
-                            } catch (e) { }
-                        }
-                    }
+					try {
+						await page.waitForFunction(() => {
+							const btn = document.querySelector('#renew-modal button[type="submit"]');
+							return btn && !btn.disabled;
+						}, { timeout: 15000 });
 
-                    // D. 准备点击确认
-                    const confirmBtn = modal.getByRole('button', { name: 'Renew' });
-                    if (await confirmBtn.isVisible()) {
+						console.log('   >> ALTCHA 已完成（按钮可点击）');
+					} catch (e) {
+						console.log('   >> ALTCHA 等待超时，尝试继续...');
+					}
 
-                        // User Requested: Screenshot BEFORE final click
-                        const fs = require('fs');
-                        const path = require('path');
-                        const photoDir = path.join(process.cwd(), 'screenshots');
-                        if (!fs.existsSync(photoDir)) fs.mkdirSync(photoDir, { recursive: true });
-                        const safeUser = user.username.replace(/[^a-z0-9]/gi, '_');
-                        const tsScreenshotName = `${safeUser}_Turnstile_${attempt}.png`;
-                        try {
-                            await page.screenshot({ path: path.join(photoDir, tsScreenshotName), fullPage: true });
-                            console.log(`   >> 📸 快照已保存: ${tsScreenshotName}`);
-                        } catch (e) { }
+					// C. 点击确认
+					const confirmBtn = modal.getByRole('button', { name: 'Renew' });
 
-                        // User Request: 找不到的话这个循环直接下一步点击renew，然后检测有没有Please complete the captcha to continue
-                        console.log('   >> 点击 Renew 确认按钮 (无论 Turnstile 状态如何)...');
-                        await confirmBtn.click();
+					if (await confirmBtn.isVisible()) {
 
-                        try {
-                            // 1. Check for Errors (Captcha or Date limit)
-                            const startVerifyTime = Date.now();
-                            while (Date.now() - startVerifyTime < 3000) {
-                                // A. Captcha Error
-                                if (await page.getByText('Please complete the captcha to continue').isVisible()) {
-                                    console.log('   >> ⚠️ 检测到错误: "Please complete the captcha".');
-                                    hasCaptchaError = true;
-                                    break;
-                                }
+						// 截图
 
-                                // B. Not Renew Time Error
-                                const notTimeLoc = page.getByText("You can't renew your server yet");
-                                if (await notTimeLoc.isVisible()) {
-                                    const text = await notTimeLoc.innerText();
-                                    const match = text.match(/as of\s+(.*?)\s+\(/);
-                                    let dateStr = match ? match[1] : 'Unknown Date';
-                                    console.log(`   >> ⏳ 暂无法续期。下次可用时间: ${dateStr}`);
+						const shotName = `${safeUsername}_ALTCHA_${attempt}.png`;
 
-                                    // 截图证明
-                                    const fs = require('fs');
-                                    const path = require('path');
-                                    const photoDir = path.join(process.cwd(), 'screenshots');
-                                    if (!fs.existsSync(photoDir)) fs.mkdirSync(photoDir, { recursive: true });
-                                    const safeUser = user.username.replace(/[^a-z0-9]/gi, '_');
-                                    const skipShotPath = path.join(photoDir, `${safeUser}_skip.png`);
-                                    try { await page.screenshot({ path: skipShotPath, fullPage: true }); } catch (e) { }
+						try {
+							await page.screenshot({
+								path: path.join(photoDir, shotName),
+								fullPage: true
+							});
+							console.log(`   >> 📸 快照已保存: ${shotName}`);
+						} catch (e) { }
 
-                                    await sendTelegramMessage(`⏳ *暂无法续期 (跳过)*\n用户: ${user.username}\n原因: 还没到时间\n下次可用: ${dateStr}`, skipShotPath);
+						console.log('   >> 点击 Renew 确认按钮...');
+						await confirmBtn.click();
+						renewSuccess = true;
+                        break;
 
-                                    renewSuccess = true; // Mark as done to stop retries
-                                    try {
-                                        const closeBtn = modal.getByLabel('Close');
-                                        if (await closeBtn.isVisible()) await closeBtn.click();
-                                    } catch (e) { }
-                                    break;
-                                }
-                                await page.waitForTimeout(200);
-                            }
-                        } catch (e) { }
-
-                        if (renewSuccess) break; // Break loop if not time yet
-
-                        if (hasCaptchaError) {
-                            console.log('   >> Error found. Refreshing page to reset Turnstile...');
-                            await page.reload();
-                            await page.waitForTimeout(3000);
-                            continue; // 刷新后，重新开始大循环
-                        }
-
-                        // F. 检查成功 (模态框消失)
-                        await page.waitForTimeout(2000);
-                        if (!await modal.isVisible()) {
-                            console.log('   >> ✅ Modal closed. Renew successful!');
-                            console.log(JSON.stringify({ success: true }));
-
-                            // 截图成功状态
-                            const fs = require('fs');
-                            const path = require('path');
-                            const photoDir = path.join(process.cwd(), 'screenshots');
-                            if (!fs.existsSync(photoDir)) fs.mkdirSync(photoDir, { recursive: true });
-                            const safeUser = user.username.replace(/[^a-z0-9]/gi, '_');
-                            const successShotPath = path.join(photoDir, `${safeUser}_success.png`);
-                            try { await page.screenshot({ path: successShotPath, fullPage: true }); } catch (e) { }
-
-                            await sendTelegramMessage(`✅ *续期成功*\n用户: ${user.username}\n状态: 服务器已成功续期！`, successShotPath);
-                            renewSuccess = true;
-                            break;
-                        } else {
-                            console.log('   >> 模态框仍打开但无错误？重试循环...');
-                            await page.reload();
-                            await page.waitForTimeout(3000);
-                            continue;
-                        }
-                    } else {
-                        console.log('   >> 未找到模态框内的验证按钮？刷新中...');
-                        await page.reload();
-                        await page.waitForTimeout(3000);
-                        continue;
-                    }
-
+					} else {
+						console.log('   >> 未找到确认按钮，刷新页面...');
+						await page.reload();
+						await Promise.race([
+							page.waitForFunction(() => {
+								const btn = document.querySelector('#renew-modal button');
+								return btn && !btn.disabled;
+							}),
+							page.waitForTimeout(5000)
+						]);
+						continue;
+					}
                 } else {
                     console.log('未找到 Renew 按钮 (服务器可能已续期或页面加载错误)。');
                     break;
@@ -599,24 +529,26 @@ async function attemptTurnstileCdp(page) {
             }
         } catch (err) {
             console.error(`Error processing user:`, err);
-        }
-
-        // Snapshot before handling next user
-        // In GitHub Actions, we save to 'screenshots' dir
-        const fs = require('fs');
-        const path = require('path');
-        const photoDir = path.join(process.cwd(), 'screenshots');
-        if (!fs.existsSync(photoDir)) fs.mkdirSync(photoDir, { recursive: true });
-        // Use safe filename
-        const safeUsername = user.username.replace(/[^a-z0-9]/gi, '_');
-        const screenshotPath = path.join(photoDir, `${safeUsername}.png`);
-        try {
-            await page.screenshot({ path: screenshotPath, fullPage: true });
-            console.log(`截图已保存至: ${screenshotPath}`);
-        } catch (e) {
-            console.log('截图失败:', e.message);
-        }
-
+		} finally {
+			// Snapshot before handling next user
+			// In GitHub Actions, we save to 'screenshots' dir
+			const photoDir = path.join(process.cwd(), 'screenshots');
+			if (!fs.existsSync(photoDir)) fs.mkdirSync(photoDir, { recursive: true });
+			// Use safe filename
+			const screenshotPath = path.join(photoDir, `${safeUsername}.png`);
+			try {
+				if (!page.isClosed()) {
+				await page.screenshot({ path: screenshotPath, fullPage: true });
+				console.log(`截图已保存至: ${screenshotPath}`);
+				} else {
+					console.log('页面已关闭，跳过截图');
+				}	
+			} catch (e) {
+				console.log('截图失败:', e.message);
+			}
+				// ✅ 关键：关 context（自动清 page + cookie）
+			await context.close();
+		}
         console.log(`用户处理完成\n`);
     }
 
